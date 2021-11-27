@@ -1,3 +1,20 @@
+import type { ActionFunction } from "remix";
+import { db } from "~/utils/db.server";
+import { redirect } from "remix";
+
+export let action: ActionFunction = async ({ request }) => {
+  let form = await request.formData();
+  let name = form.get("name");
+  let content = form.get("content");
+  if (typeof name !== "string" || typeof content !== "string") {
+    throw new Error("form submitted incorrectly");
+  }
+  let joke = await db.joke.create({
+    data: { name, content },
+  });
+  return redirect(`/jokes/${joke.id}`);
+};
+
 export default function NewJokeRoute() {
   return (
     <div>
