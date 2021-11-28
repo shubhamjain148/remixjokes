@@ -1,7 +1,9 @@
-import { ActionFunction, useActionData } from "remix";
 import { db } from "~/utils/db.server";
+import { Link, useActionData, useCatch } from "remix";
+import type { ActionFunction, LoaderFunction } from "remix";
+
 import { redirect } from "remix";
-import { requireUserId } from "~/utils/session.server";
+import { getUserId, requireUserId } from "~/utils/session.server";
 
 function validateJokeName(name: string) {
   if (name.length < 3) {
@@ -14,6 +16,14 @@ function validateJokeContent(content: string) {
     return "Joke content must be at least 10 characters long";
   }
 }
+
+export let loader: LoaderFunction = async ({ request }) => {
+  let userId = await getUserId(request);
+  if (!userId) {
+    throw new Response("You should be logged in ", { status: 401 });
+  }
+  return {};
+};
 
 type ActionData = {
   formError?: string;
@@ -120,4 +130,16 @@ export function ErrorBoundary() {
       Something unexpected went wrong. Sorry about that.
     </div>
   );
+}
+
+export function CatchBoundary() {
+  let catchData = useCatch();
+  if (catchData.status === 401) {
+    return (
+      <div className="error-container">
+        <pre>You must be logged in to create a new joke</pre>
+        <Link to="/login">Login</Link>
+      </div>
+    );
+  }
 }
