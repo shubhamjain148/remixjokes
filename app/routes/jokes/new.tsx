@@ -1,76 +1,101 @@
-import { db } from "~/utils/db.server";
-import { Link, useActionData, useCatch } from "remix";
 import type { ActionFunction, LoaderFunction } from "remix";
-
-import { redirect } from "remix";
-import { getUserId, requireUserId } from "~/utils/session.server";
-
-function validateJokeName(name: string) {
-  if (name.length < 3) {
-    return "Joke name must be at least 3 characters long";
-  }
-}
-
-function validateJokeContent(content: string) {
-  if (content.length < 10) {
-    return "Joke content must be at least 10 characters long";
-  }
-}
+import {
+  useActionData,
+  redirect,
+  useCatch,
+  Link,
+  Form,
+  useTransition,
+} from "remix";
+import { JokeDisplay } from "~/components/joke";
+import { db } from "~/utils/db.server";
+import { requireUserId, getUserId } from "~/utils/session.server";
 
 export let loader: LoaderFunction = async ({ request }) => {
   let userId = await getUserId(request);
   if (!userId) {
-    throw new Response("You should be logged in ", { status: 401 });
+    throw new Response("Unauthorized", { status: 401 });
   }
   return {};
 };
 
+function validateJokeContent(content: string) {
+  if (content.length < 10) {
+    return `That joke is too short`;
+  }
+}
+
+function validateJokeName(name: string) {
+  if (name.length < 2) {
+    return `That joke's name is too short`;
+  }
+}
+
 type ActionData = {
   formError?: string;
-  fields?: {
-    name?: string;
-    content?: string;
+  fieldErrors?: {
+    name: string | undefined;
+    content: string | undefined;
   };
-  fieldErrors?: { name?: string; content?: string };
+  fields?: {
+    name: string;
+    content: string;
+  };
 };
 
 export let action: ActionFunction = async ({
   request,
 }): Promise<Response | ActionData> => {
   let userId = await requireUserId(request);
-  if (!userId) {
-    return redirect("/login?redirectTo=/jokes/new");
-  }
   let form = await request.formData();
   let name = form.get("name");
   let content = form.get("content");
   if (typeof name !== "string" || typeof content !== "string") {
-    return {
-      formError: "Form submitted incorrectly",
-    };
+    return { formError: `Form not submitted correctly.` };
   }
 
   let fieldErrors = {
     name: validateJokeName(name),
     content: validateJokeContent(content),
   };
-
+  let fields = { name, content };
   if (Object.values(fieldErrors).some(Boolean)) {
-    return { fieldErrors, fields: { name, content } };
+    return { fieldErrors, fields };
   }
+
   let joke = await db.joke.create({
-    data: { name, content, jokesterId: userId },
+    data: { ...fields, jokesterId: userId },
   });
   return redirect(`/jokes/${joke.id}`);
 };
 
 export default function NewJokeRoute() {
-  let actionData = useActionData<ActionData>();
+  let actionData = useActionData<ActionData | undefined>();
+  let transition = useTransition();
+
+  if (transition.submission) {
+    let name = transition.submission.formData.get("name");
+    let content = transition.submission.formData.get("content");
+    if (
+      typeof name === "string" &&
+      typeof content === "string" &&
+      !validateJokeContent(content) &&
+      !validateJokeName(name)
+    ) {
+      return (
+        <JokeDisplay
+          joke={{ name, content }}
+          isOwner={true}
+          canDelete={false}
+        />
+      );
+    }
+  }
 
   return (
     <div>
       <p>Add your own hilarious joke</p>
-      <form method="post">
+      <Form method="post">
         <div>
           <label>
             Name:{" "}
@@ -119,27 +144,30 @@ export default function NewJokeRoute() {
             Add
           </button>
         </div>
-      </form>
-    </div>
-  );
-}
-
-export function ErrorBoundary() {
-  return (
-    <div className="error-container">
-      Something unexpected went wrong. Sorry about that.
+      </Form>
     </div>
   );
 }
 
 export function CatchBoundary() {
-  let catchData = useCatch();
-  if (catchData.status === 401) {
+  let caught = useCatch();
+
+  if (caught.status === 401) {
     return (
       <div className="error-container">
-        <pre>You must be logged in to create a new joke</pre>
+        <p>You must be logged in to create a joke.</p>
         <Link to="/login">Login</Link>
       </div>
     );
   }
+}
+
+export function ErrorBoundary({ error }: { error: Error }) {
+  console.error(error);
+
+  return (
+    <div className="error-container">
+      Something unexpected went wrong. Sorry about that.
+    </div>
+  );
 }
