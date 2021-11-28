@@ -1,6 +1,7 @@
 import { ActionFunction, useActionData } from "remix";
 import { db } from "~/utils/db.server";
 import { redirect } from "remix";
+import { requireUserId } from "~/utils/session.server";
 
 function validateJokeName(name: string) {
   if (name.length < 3) {
@@ -26,6 +27,10 @@ type ActionData = {
 export let action: ActionFunction = async ({
   request,
 }): Promise<Response | ActionData> => {
+  let userId = await requireUserId(request);
+  if (!userId) {
+    return redirect("/login?redirectTo=/jokes/new");
+  }
   let form = await request.formData();
   let name = form.get("name");
   let content = form.get("content");
@@ -44,7 +49,7 @@ export let action: ActionFunction = async ({
     return { fieldErrors, fields: { name, content } };
   }
   let joke = await db.joke.create({
-    data: { name, content },
+    data: { name, content, jokesterId: userId },
   });
   return redirect(`/jokes/${joke.id}`);
 };
